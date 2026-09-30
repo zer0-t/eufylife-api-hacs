@@ -1,0 +1,213 @@
+refresh_data:
+  name: "Refresh EufyLife Data"
+  description: "Manually trigger a data refresh for debugging purposes"
+  fields:
+    entity_id:
+      name: "Entity ID"
+      description: "Target a specific EufyLife sensor (optional)"
+      required: false
+      selector:
+        entity:
+          domain: sensor
+          integration: eufylife_api
+
+set_light_settings:
+  name: "Set Light Settings"
+  description: "Advanced control for Eufy lights including segmented colors, speed and direction."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    effect:
+      name: "Effect"
+      description: "Name of a preset effect to apply."
+      selector:
+        text:
+    colors:
+      name: "Colors"
+      description: "List of colors for each lamp segment. Use 3-tuple [R,G,B] or 5-tuple [R,G,B,W,C]."
+      selector:
+        object:
+    speed:
+      name: "Speed"
+      description: "Animation speed (1 to 10)."
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+    direction:
+      name: "Direction"
+      description: "Animation direction (0 or 1)."
+      selector:
+        number:
+          min: 0
+          max: 1
+          mode: box
+
+set_light_show:
+  name: "Set Light Show Animation"
+  description: "Send a custom JSON animation payload to Eufy lights."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    params:
+      name: "Parameters"
+      description: "JSON string containing lightShow or animation parameters (layers, speeds, colors)."
+      required: true
+      selector:
+        text:
+          multiline: true
+    use_ai_opcode:
+      name: "Use AI Opcode"
+      description: "Send via AI opcode 0211 instead of 0210 (legacy)."
+      required: false
+      selector:
+        boolean:
+
+set_scene:
+  name: "Set Scene"
+  description: "Trigger a cloud scene by numeric scene ID (Opcode 0202)."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    scene_id:
+      name: "Scene ID"
+      description: "Numeric ID of the scene."
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100000
+          mode: box
+
+create_scene:
+  name: "Create Scene"
+  description: "Save a scene to your Eufy account so it appears next to the light's presets."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    name:
+      name: "Name"
+      description: "Name the scene is saved under; it is also the effect name."
+      required: true
+      selector:
+        text:
+    colors:
+      name: "Colors"
+      description: "Palette of the scene. Use 3-tuple [R,G,B] or 5-tuple [R,G,B,W,C]. A few colours are repeated along the strip; one entry per segment builds it segment by segment. Leave empty to save what the light shows now."
+      required: false
+      selector:
+        object:
+    mode:
+      name: "Mode"
+      description: "Mode the scene renders with. Defaults to the custom palette mode the integration writes (20006)."
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 99999
+          mode: box
+    brightness:
+      name: "Brightness"
+      description: "Brightness the scene is saved with (0 to 100). Defaults to the current brightness."
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          mode: slider
+    speed:
+      name: "Speed"
+      description: "Animation speed the scene is saved with (1 to 10)."
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+    direction:
+      name: "Direction"
+      description: "Animation direction of the scene (0 or 1)."
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1
+          mode: box
+    context:
+      name: "Description"
+      description: "Text stored with the scene, which the Eufy app shows as its description."
+      required: false
+      selector:
+        text:
+          multiline: true
+
+create_ai_scene:
+  name: "Create AI Scene"
+  description: "Generate a light effect with Eufy's AI and save it to your account as a scene."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    name:
+      name: "Name"
+      description: "Name the scene is saved under; it is also the effect name."
+      required: true
+      selector:
+        text:
+    prompt:
+      name: "Description"
+      description: "What the light show should be, in words (for example 'a quiet snowy evening'). Leave empty to let the AI pick at random, like the app's magic dice."
+      required: false
+      selector:
+        text:
+          multiline: true
+
+preview_ai_effect:
+  name: "Preview AI Effect"
+  description: "Generate a light effect with Eufy's AI and show it on the light without saving it as a scene."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    prompt:
+      name: "Description"
+      description: "What the light show should be, in words. Leave empty to let the AI pick at random."
+      required: false
+      selector:
+        text:
+          multiline: true
+
+delete_scene:
+  name: "Delete Scene"
+  description: "Remove one of the scenes saved to your Eufy account. Catalog presets are shared by every account and cannot be deleted."
+  target:
+    entity:
+      domain: light
+      integration: eufylife_api
+  fields:
+    effect:
+      name: "Effect"
+      description: "Name of the scene as it appears in the light's effect list."
+      required: false
+      selector:
+        text:
+    light_id:
+      name: "Cloud ID"
+      description: "Cloud id of the scene, if it is known (the id the light reports for it)."
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100000000
+          mode: box

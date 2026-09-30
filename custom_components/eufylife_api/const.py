@@ -1,0 +1,114 @@
+"""Constants for the EufyLife API integration."""
+
+DOMAIN = "eufylife_api"
+
+# Configuration keys
+CONF_EMAIL = "email"
+CONF_PASSWORD = "password"
+CONF_UPDATE_INTERVAL = "update_interval"
+CONF_COUNTRY = "country"
+CONF_DATA_LOOKBACK_DAYS = "data_lookback_days"
+
+# API constants
+API_BASE_URL = "https://api.eufylife.com"
+AUTH_API_BASE_URL = "https://home-api.eufylife.com/v1"
+LIGHT_API_BASE_URL = "https://aiot-light-api-pr.eufylife.com"
+CLIENT_ID = "eufy-app"
+CLIENT_SECRET = "8FHf22gaTKu7MZXqz5zytw"
+
+# Country the integration authenticated with before it stored one per entry.
+DEFAULT_COUNTRY = "US"
+
+# User-Agent version - update if EufyLife releases newer app versions
+USER_AGENT_VERSION = "3.3.12"
+
+# Default update interval in seconds (5 minutes)
+DEFAULT_UPDATE_INTERVAL = 300
+
+# Default data lookback period in days
+DEFAULT_DATA_LOOKBACK_DAYS = 30
+
+# Per-segment light entities are only created for lights that address their
+# segments in one frame. The palette is length-prefixed with a single byte and
+# carries five channels per segment, so one frame fits at most 50 segments; this
+# cap sits deliberately below that, so long strips (for example the E22/T8L02
+# permanent outdoor lights) stay on their main light entity instead of flooding
+# Home Assistant with dozens of entities.
+MAX_SEGMENT_ENTITIES = 32
+
+# Update interval options (in seconds)
+UPDATE_INTERVAL_OPTIONS = {
+    "1 minute": 60,
+    "2 minutes": 120,
+    "5 minutes": 300,
+    "10 minutes": 600,
+    "15 minutes": 900,
+    "30 minutes": 1800,
+    "1 hour": 3600,
+    "2 hours": 7200,
+    "6 hours": 21600,
+    "12 hours": 43200,
+}
+
+# Sensor types
+SENSOR_TYPES = {
+    "weight": {
+        "name": "Weight",
+        "device_class": "weight",
+        "unit": "kg",
+        "icon": "mdi:scale",
+    },
+    "target_weight": {
+        "name": "Target Weight",
+        "device_class": "weight",
+        "unit": "kg",
+        "icon": "mdi:target",
+    },
+    "body_fat": {
+        "name": "Body Fat",
+        "unit": "%",
+        "icon": "mdi:percent",
+    },
+    "muscle_mass": {
+        "name": "Muscle Mass",
+        "device_class": "weight",
+        "unit": "kg",
+        "icon": "mdi:arm-flex",
+    },
+    "bmi": {
+        "name": "BMI",
+        "unit": "kg/m²",
+        "icon": "mdi:human",
+    },
+    "water_percentage": {
+        "name": "Water Percentage",
+        "unit": "%",
+        "icon": "mdi:water-percent",
+    },
+    "bone_mass": {
+        "name": "Bone Mass",
+        "device_class": "weight",
+        "unit": "kg",
+        "icon": "mdi:bone",
+    },
+    "bmr": {
+        "name": "BMR",
+        "unit": "kcal/day",
+        "icon": "mdi:fire",
+    },
+    "body_age": {
+        "name": "Body Age",
+        "unit": "years",
+        "icon": "mdi:calendar-account",
+    },
+    "visceral_fat": {
+        "name": "Visceral Fat",
+        "unit": "level",
+        "icon": "mdi:stomach",
+    },
+    "protein_ratio": {
+        "name": "Protein Ratio",
+        "unit": "%",
+        "icon": "mdi:food-drumstick",
+    },
+}

@@ -1,0 +1,12 @@
+{
+  "domain": "eufylife_api",
+  "name": "EufyLife API",
+  "codeowners": ["@zer0-t"],
+  "config_flow": true,
+  "documentation": "https://github.com/zer0-t/eufylife-api-hacs",
+  "issue_tracker": "https://github.com/zer0-t/eufylife-api-hacs/issues",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "requirements": ["requests>=2.25.0", "paho-mqtt>=1.6.1"],
+  "version": "2.4.0"
+}

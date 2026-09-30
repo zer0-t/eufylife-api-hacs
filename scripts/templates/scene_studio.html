@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<!--
+  The scene studio's page. Everything it shows comes from /api/state, and every
+  button posts to one of the routes in scene_studio.py, which drive the same
+  cloud client the Home Assistant services use.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eufy scene studio</title>
+<style>
+  :root {
+    --bg: #0f1c26;
+    --panel: #16263180;
+    --muted: #7b8f9a;
+    --accent: #12d3c6;
+    --accent-ink: #06231f;
+    --line: #2a3f4c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px 22px 40px;
+    background: var(--bg); color: #e8f2f5;
+    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(320px, 420px); gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 18px; margin-bottom: 16px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row + .row { margin-top: 10px; }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--line); background: #0b1720; color: #e8f2f5;
+  }
+  textarea { min-height: 62px; resize: vertical; }
+  input[type=range] { width: 100%; }
+  button {
+    padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line);
+    background: #1d3240; color: #e8f2f5; cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.ghost { background: transparent; }
+  button.mini { padding: 4px 10px; font-size: 12px; }
+  .grid { display: grid; gap: 8px; margin: 6px 0 12px; }
+  .seg { aspect-ratio: 1; border-radius: 50%; border: 2px solid #24404f; cursor: pointer; background: #10222c; }
+  .seg.selected { border-color: var(--accent); }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; }
+  .swatch.current { border-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: #ffffff; color: #23323a; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 12px; border: none; }
+  .chip:hover { outline: 2px solid var(--accent); }
+  .scenes { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow: auto; }
+  .scene { display: flex; align-items: center; gap: 10px; background: #0b1720; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .scene .name { flex: 1; }
+  .scene .meta { color: var(--muted); font-size: 12px; }
+  .dots { display: flex; gap: 3px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  #log { background: #06121a; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; height: 150px; overflow: auto; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; }
+  .design { background: #0b1720; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+  .design p { margin: 0 0 6px; }
+  .design .fail { color: #ff8a8a; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status b { color: #e8f2f5; }
+  .state { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+  .state div { background: #0b1720; border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+  .state span { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .state b { color: #e8f2f5; font-variant-numeric: tabular-nums; }
+  .dots.wrap { flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<h1>Eufy scene studio</h1>
+<div class="sub">
+  Scenes saved here go to your Eufy account: the app shows them under Persoonlijk,
+  and Home Assistant offers them as effects by name.
+</div>
+
+
+<div class="layout">
+  <div>
+    <div class="panel">
+      <div class="row">
+        <label class="field" style="margin:0; min-width:220px;">
+          <span>Light</span>
+          <select id="light"></select>
+        </label>
+        <div class="status" id="status">loading…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Current state</h2>
+      <div class="state" id="state-grid"></div>
+      <div class="row" style="margin-top:10px;">
+        <div class="dots wrap" id="state-dots" style="flex:1;"></div>
+        <button class="mini" id="read-now" title="Ask the light for its settings right now">Read now</button>
+      </div>
+      <div class="hint" id="state-when" style="margin-top:8px;"></div>
+      <div class="hint" style="margin-top:6px;">
+        What the light itself reports: its power, brightness, effect id, speed and the
+        colours of its segments. The page asks again every minute, right away when the
+        tab comes back into view, and whenever you press Read now. A light that does
+        not answer leaves the last report standing, and the line above says so.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Segments</h2>
+      <div class="grid" id="grid"></div>
+      <div class="swatches" id="swatches"></div>
+      <div class="row" style="margin-top:12px;">
+        <button class="mini" id="select-all">Select all</button>
+        <button class="mini" id="select-none">Clear selection</button>
+        <button class="mini" id="paint-selection">Paint selection</button>
+        <button class="mini" id="clear-colors">All off</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">
+        Click a segment to select it, then a colour to paint the selection. A colour
+        picked in the browser also paints it straight away.
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Use it</h2>
+      <label class="field"><span>Name</span><input type="text" id="name" value="Mijn scène"></label>
+      <label class="field"><span>Description (stored with the scene)</span><textarea id="context"></textarea></label>
+      <div class="row">
+        <label class="field" style="margin:0; flex:1; min-width:150px;"><span>Mode</span><select id="mode"></select></label>
+        <label class="field" style="margin:0; flex:1; min-width:150px;"><span>Colours saved</span>
+          <select id="save-mode">
+            <option value="palette">Palette (the mode repeats them)</option>
+            <option value="segments">Segment by segment</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <label class="field" style="margin:0; flex:1;"><span>Brightness <b id="brightness-value"></b></span><input type="range" id="brightness" min="0" max="100"></label>
+        <label class="field" style="margin:0; flex:1;"><span>Speed <b id="speed-value"></b></span><input type="range" id="speed" min="1" max="10"></label>
+        <label class="field" style="margin:0; flex:1;"><span>Direction <b id="direction-value"></b></span><input type="range" id="direction" min="0" max="1"></label>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="primary" id="apply">Show on the light</button>
+        <button id="save">Save as scene</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>AI LightChat</h2>
+      <label class="field"><span>Describe the light show</span><textarea id="prompt" placeholder="a quiet snowy evening with warm candle light"></textarea></label>
+      <div class="row">
+        <button id="ai-generate">Generate</button>
+        <button id="ai-apply">Generate and show</button>
+        <button class="ghost" id="ai-dice" title="Let the AI pick at random, like the app's magic dice">Magic dice</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="mini" id="ai-use">Put the design in the grid</button>
+        <button class="mini primary" id="ai-save">Save the design as a scene</button>
+      </div>
+      <div class="design" id="design" hidden></div>
+      <div class="chips" id="chips" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Saved scenes (<span id="scene-count">0</span>)</h2>
+      <div class="scenes" id="scenes"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = ["#ff0000", "#ff8a00", "#ffe600", "#22c55e", "#12d3c6", "#2563eb",
+                "#a855f7", "#ff2d95", "#ffffff", "#000000"];
+
+let state = { lights: [], keywords: [] };
+let active = null;         // the light the page is working on
+let selection = new Set(); // selected segment indices
+let palette = [];          // one colour per segment
+let current = "#12d3c6";   // the colour the brush paints with
+let design = null;         // the last design the AI answered with
+const POLL_SECONDS = 60;   // how often the page asks the light what it is doing
+let readAt = null;         // when the last read of the light answered
+// The first read of a page load is the plain one; the tick after it is a minute out,
+// never immediate, so loading the page does not also fire a poll at once.
+let nextRead = Date.now() + POLL_SECONDS * 1000;
+let reading = false;       // one read at a time
+let lastSeen = "";         // what the last read answered, so only changes are logged
+
+const $ = (id) => document.getElementById(id);
+
+function log(message) {
+  $("log").textContent = new Date().toLocaleTimeString() + "  " + message + "\n" + $("log").textContent;
+}
+
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || response.status + " " + response.statusText);
+  return data;
+}
+
+function describe(light) {
+  return "power " + (light.power ? "on" : "off") +
+    " · brightness " + (light.brightness ?? "?") + "% · " +
+    (light.effect ? "showing " + light.effect : "effect id " + (light.light_id ?? "?")) +
+    " · speed " + (light.speed ?? "?") + " · direction " + (light.direction ?? "?");
+}
+
+function signature(light) {
+  // What a poll compares against, so a read that moved nothing writes no log line.
+  return [light.power, light.brightness, light.effect, light.light_id, light.speed,
+          light.direction, (light.colors || []).join(",")].join("|");
+}
+
+function renderLightSelect() {
+  const select = $("light");
+  select.innerHTML = "";
+  state.lights.forEach((light) => {
+    const option = document.createElement("option");
+    option.value = light.serial;
+    option.textContent = light.name + " (" + light.model + ")";
+    select.appendChild(option);
+  });
+  select.value = active.serial;
+}
+
+function renderState() {
+  const grid = $("state-grid");
+  const dots = $("state-dots");
+  grid.innerHTML = "";
+  dots.innerHTML = "";
+  if (!active) return;
+  [
+    ["Power", active.power ? "on" : "off"],
+    ["Brightness", (active.brightness ?? "?") + "%"],
+    ["Effect", active.effect || "-"],
+    ["Effect id", active.light_id ?? "?"],
+    ["Speed", active.speed ?? "?"],
+    ["Direction", active.direction ?? "?"],
+    ["Segments", active.lamp_count || "?"],
+  ].forEach(([label, shown]) => {
+    const cell = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("b");
+    value.textContent = String(shown);
+    cell.append(name, value);
+    grid.appendChild(cell);
+  });
+  const colors = active.colors || [];
+  colors.forEach((color, index) => {
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    dot.style.background = color;
+    dot.title = "segment " + (index + 1) + ": " + color;
+    dots.appendChild(dot);
+  });
+  if (!colors.length) {
+    const note = document.createElement("span");
+    note.className = "hint";
+    note.textContent = "the light has not reported its colours yet";
+    dots.appendChild(note);
+  }
+}
+
+function renderWhen() {
+  // A state panel is only worth reading when it says how old it is, and when a
+  // fresh read went unanswered that is the one thing the page must not hide.
+  const parts = [];
+  if (readAt) {
+    let when = "read " + readAt.toLocaleTimeString();
+    if (state.fresh && active && !(state.answered || []).includes(active.serial)) {
+      when += " (the light did not answer, this is its last report)";
+    }
+    parts.push(when);
+    parts.push("next read in " +
+      Math.max(0, Math.round((nextRead - Date.now()) / 1000)) + "s");
+  }
+  $("state-when").textContent = parts.join(" · ");
+}
+
+async function readState(fresh) {
+  // Reads what the light is doing, and only that: the palette, the sliders and the
+  // mode picker are deliberately left alone, so a read every minute cannot undo
+  // what is being painted. `fresh` asks the light itself instead of trusting the
+  // last frame the studio wrote.
+  state = await api("/api/state" + (fresh ? "?fresh=1" : ""));
+  readAt = new Date();
+  nextRead = Date.now() + POLL_SECONDS * 1000;
+  active = state.lights.find((light) => active && light.serial === active.serial)
+    || state.lights[0] || null;
+  renderWhen();
+  if (!active) {
+    $("status").textContent = "no lights found in this account";
+    renderState();
+    return false;
+  }
+  renderLightSelect();
+  renderState();
+  return true;
+}
+
+async function refresh() {
+  // After an action the editor follows the light again: the grid is rebuilt from
+  // what the light is showing, so a save or an apply shows up in the page.
+  if (!await readState(false)) return;
+  palette = [];
+  renderLight();
+  renderChips();
+  lastSeen = signature(active);
+}
+
+async function poll(manual) {
+  // One read: the minute tick, or the button. The tick logs what moved and nothing
+  // when nothing did; the button always says what it found.
+  if (reading) return;
+  reading = true;
+  try {
+    if (!await readState(true)) return;
+    if (manual) log("read now: " + describe(active));
+    else if (signature(active) !== lastSeen) log("the light now reports: " + describe(active));
+    lastSeen = signature(active);
+  } catch (err) {
+    log("could not read the light: " + err.message);
+    nextRead = Date.now() + POLL_SECONDS * 1000;
+  } finally {
+    reading = false;
+    renderWhen();
+  }
+}
+
+function renderLight() {
+  const light = active;
+  // The live values have their own panel now; this line names the light and counts
+  // what it has, which is what the editor needs to know about it.
+  $("status").innerHTML =
+    "<b>" + light.name + "</b> · " + (light.lamp_count || "no report yet") +
+    (light.lamp_count ? " segments" : " (the light has not answered yet - reload in a moment)") +
+    " · " + light.effect_count + " effects";
+
+  // The grid starts from what the light is showing and is then kept for as long as
+  // the page is open, so painting is not undone by every read.
+  if (palette.length !== (light.lamp_count || 0)) {
+    palette = Array.from({ length: light.lamp_count || 0 },
+      (_, index) => light.colors[index] || "#000000");
+  }
+  $("grid").style.gridTemplateColumns = "repeat(" + (light.columns || 10) + ", 1fr)";
+
+  const mode = $("mode");
+  mode.innerHTML = "";
+  (light.modes || []).forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = "mode " + value;
+    mode.appendChild(option);
+  });
+  if ((light.modes || []).includes(20006)) mode.value = "20006";
+
+  $("brightness").value = light.brightness ?? 100;
+  $("speed").value = light.speed ?? 1;
+  $("direction").value = light.direction ?? 0;
+  updateSliderLabels();
+  renderGrid();
+  renderScenes();
+}
+
+function renderGrid() {
+  const grid = $("grid");
+  grid.innerHTML = "";
+  palette.forEach((color, index) => {
+    const segment = document.createElement("div");
+    segment.className = "seg" + (selection.has(index) ? " selected" : "");
+    segment.style.background = color;
+    segment.title = "segment " + (index + 1);
+    segment.onclick = () => {
+      if (selection.has(index)) selection.delete(index); else selection.add(index);
+      renderGrid();
+    };
+    grid.appendChild(segment);
+  });
+}
+
+function renderSwatches() {
+  const box = $("swatches");
+  box.innerHTML = "";
+  COLORS.forEach((color) => {
+    const swatch = document.createElement("div");
+    swatch.className = "swatch" + (color === current ? " current" : "");
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.onclick = () => { current = color; paintSelection(); renderSwatches(); };
+    box.appendChild(swatch);
+  });
+  const picker = document.createElement("input");
+  picker.type = "color";
+  picker.value = current;
+  picker.style.cssText = "width:38px;height:30px;padding:0;border:none;background:none;";
+  picker.oninput = () => { current = picker.value; paintSelection(); };
+  box.appendChild(picker);
+}
+
+function paintSelection() {
+  const targets = selection.size ? [...selection] : palette.map((_, index) => index);
+  targets.forEach((index) => { palette[index] = current; });
+  renderGrid();
+}
+
+function updateSliderLabels() {
+  $("brightness-value").textContent = $("brightness").value + "%";
+  $("speed-value").textContent = $("speed").value;
+  $("direction-value").textContent = $("direction").value;
+}
+
+// --- actions ---
+
+function renderScenes() {
+  const box = $("scenes");
+  box.innerHTML = "";
+  $("scene-count").textContent = active.scenes.length;
+  active.scenes.forEach((scene) => {
+    const row = document.createElement("div");
+    row.className = "scene";
+    const dots = document.createElement("div");
+    dots.className = "dots";
+    scene.colors.slice(0, 8).forEach((color) => {
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      dot.style.background = color;
+      dots.appendChild(dot);
+    });
+    const name = document.createElement("div");
+    name.className = "name";
+    name.innerHTML = "<div>" + scene.name + "</div><div class='meta'>id " + scene.light_id +
+      " · mode " + scene.mode + " · speed " + scene.speed + " · type " + scene.light_type + "</div>";
+    const show = document.createElement("button");
+    show.className = "mini";
+    show.textContent = "Show";
+    show.onclick = () => applyEffect(scene.name);
+    const remove = document.createElement("button");
+    remove.className = "mini ghost";
+    remove.textContent = "Delete";
+    remove.onclick = () => deleteScene(scene);
+    row.append(dots, name, show, remove);
+    box.appendChild(row);
+  });
+}
+
+function renderChips() {
+  const box = $("chips");
+  box.innerHTML = "";
+  (state.keywords || []).forEach((keyword) => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = keyword;
+    chip.onclick = () => { $("prompt").value = keyword; };
+    box.appendChild(chip);
+  });
+}
+
+function renderDesign() {
+  const box = $("design");
+  if (!design) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = "";
+  const context = document.createElement("p");
+  context.innerHTML = "<b>" + (design.context || "an AI design") + "</b>";
+  const meta = document.createElement("div");
+  meta.className = "hint";
+  meta.textContent = "mode " + design.dynamic + " · brightness " + design.brightness +
+    " · speed " + design.speed + " · direction " + design.direction;
+  const dots = document.createElement("div");
+  dots.className = "dots";
+  design.colors.forEach((color) => {
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    dot.style.background = color;
+    dots.appendChild(dot);
+  });
+  box.append(context, meta, dots);
+}
+
+// An answer that never came has to be as visible as one that did, otherwise a
+// failed generation looks like a button that does nothing.
+function showDesignError(message) {
+  design = null;
+  const box = $("design");
+  box.hidden = false;
+  box.innerHTML = "";
+  const fail = document.createElement("p");
+  fail.className = "fail";
+  fail.textContent = "the AI did not answer: " + message;
+  box.appendChild(fail);
+}
+
+async function applyToLight() {
+  if (!active) return;
+  try {
+    await api("/api/apply", {
+      serial: active.serial,
+      colors: palette,
+      speed: Number($("speed").value),
+      direction: Number($("direction").value),
+    });
+    log("the light accepted the palette");
+  } catch (err) {
+    log("failed: " + err.message);
+  }
+}
+
+async function applyEffect(name) {
+  if (!active) return;
+  try {
+    await api("/api/effect", { serial: active.serial, effect: name });
+    log("showing the effect " + name);
+  } catch (err) {
+    log("failed: " + err.message);
+  }
+}
+
+async function deleteScene(scene) {
+  if (!active || !confirm("Delete the scene " + scene.name + " from your account?")) return;
+  try {
+    await api("/api/scenes/delete", {
+      serial: active.serial, name: scene.name, light_id: scene.light_id,
+    });
+    log("deleted " + scene.name);
+    await refresh();
+  } catch (err) {
+    log("failed: " + err.message);
+  }
+}
+
+// --- saving ---
+
+function coloursToSave() {
+  if ($("save-mode").value === "segments") return palette.slice();
+  const seen = [];
+  palette.forEach((color) => { if (!seen.includes(color)) seen.push(color); });
+  return seen;
+}
+
+async function saveScene(extra) {
+  if (!active) return;
+  const body = Object.assign({
+    serial: active.serial,
+    name: $("name").value,
+    colors: coloursToSave(),
+    context: $("context").value,
+    mode: Number($("mode").value) || null,
+    brightness: Number($("brightness").value),
+    speed: Number($("speed").value),
+    direction: Number($("direction").value),
+  }, extra || {});
+  try {
+    const data = await api("/api/scenes", body);
+    log("saved '" + body.name + "' as cloud id " + data.light_id +
+      "; Home Assistant shows it as an effect");
+    await refresh();
+  } catch (err) {
+    log("failed: " + err.message);
+  }
+}
+
+async function generateAi(show, prompt) {
+  if (!active) return;
+  log(prompt ? "asking the AI for '" + prompt + "'..." : "letting the AI pick...");
+  try {
+    const data = await api("/api/ai", {
+      serial: active.serial, prompt: prompt || null, apply: show,
+    });
+    design = data.design;
+    renderDesign();
+    log("the AI answered: " + (design.context || "(no description)") + " · mode " +
+      design.dynamic + " · " + design.colors.join(" ") +
+      (show ? " · showing it on the light at " + design.brightness + "%" : ""));
+  } catch (err) {
+    showDesignError(err.message);
+    log("failed: " + err.message);
+  }
+}
+
+function useDesign() {
+  if (!design) return;
+  for (let index = 0; index < palette.length; index++) {
+    palette[index] = design.colors[index % design.colors.length];
+  }
+  $("mode").value = String(design.dynamic);
+  $("brightness").value = design.brightness;
+  $("speed").value = design.speed;
+  $("direction").value = design.direction;
+  updateSliderLabels();
+  renderGrid();
+  log("the design is in the grid");
+}
+
+$("light").onchange = () => {
+  active = state.lights.find((light) => light.serial === $("light").value);
+  selection.clear();
+  palette = [];
+  renderLight();
+  renderState();
+  lastSeen = signature(active);
+};
+$("select-all").onclick = () => {
+  palette.forEach((_, index) => selection.add(index));
+  renderGrid();
+};
+$("select-none").onclick = () => { selection.clear(); renderGrid(); };
+$("paint-selection").onclick = paintSelection;
+$("clear-colors").onclick = () => {
+  palette = palette.map(() => "#000000");
+  selection.clear();
+  renderGrid();
+};
+$("apply").onclick = applyToLight;
+$("save").onclick = () => saveScene();
+$("ai-generate").onclick = () => generateAi(false, $("prompt").value);
+$("ai-apply").onclick = () => generateAi(true, $("prompt").value);
+$("ai-dice").onclick = () => generateAi(true, "");
+$("ai-use").onclick = useDesign;
+$("ai-save").onclick = () => saveScene({
+  name: $("name").value,
+  keywords: $("prompt").value || $("name").value,
+});
+["brightness", "speed", "direction"].forEach(
+  (id) => $(id).addEventListener("input", updateSliderLabels));
+$("read-now").onclick = () => poll(true);
+
+// The light reports on its own too, but a page that is open should show what the
+// lamp is doing now rather than what it was doing when the page loaded, so the page
+// asks once a minute. A hidden tab is not being looked at and holds its reads;
+// coming back into view asks at once instead of after another minute.
+setInterval(() => {
+  renderWhen();
+  if (!document.hidden && !reading && Date.now() >= nextRead) poll(false);
+}, 1000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !reading && Date.now() >= nextRead) poll(false);
+});
+
+renderSwatches();
+refresh().catch((err) => log("could not read the account: " + err.message));
+</script>
+</body>
+</html>

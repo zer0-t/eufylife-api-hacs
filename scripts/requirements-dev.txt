@@ -1,0 +1,8 @@
+# Development tools for the scripts in this directory.
+#
+# The integration itself must not depend on these: Home Assistant installs
+# requirements.txt next to the component, so nothing here belongs there. Install
+# these only to run the local tools, for example:
+#
+#     pip install -r scripts/requirements-dev.txt
+flask>=3.0,<4

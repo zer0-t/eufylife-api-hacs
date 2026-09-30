@@ -1,0 +1,99 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EufyLife API",
+        "description": "Enter your EufyLife account credentials to connect smart scales and Eufy lights.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "country": "Country Code",
+          "update_interval": "Update Interval"
+        },
+        "data_description": {
+          "country": "2-letter country code (e.g. US, DE, GB) where your EufyLife account was created. This determines which regional API server is used.",
+          "update_interval": "How often to check for new weight data"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate EufyLife API",
+        "description": "Your credentials need to be updated. Please re-enter your login information.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "country": "Country Code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to EufyLife API",
+      "invalid_auth": "Invalid email or password",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EufyLife API Options",
+        "description": "Configure your EufyLife API integration options.",
+        "data": {
+          "country": "Country Code",
+          "update_interval": "Update Interval"
+        },
+        "data_description": {
+          "country": "2-letter country code (e.g. US, DE, GB) where your EufyLife account was created. This determines which regional API server is used.",
+          "update_interval": "How often to check for new weight data"
+        }
+      }
+    }
+  },
+  "selector": {
+    "update_interval": {
+      "options": {
+        "1_minute": "1 minute",
+        "2_minutes": "2 minutes",
+        "5_minutes": "5 minutes (recommended)",
+        "10_minutes": "10 minutes",
+        "15_minutes": "15 minutes",
+        "30_minutes": "30 minutes",
+        "1_hour": "1 hour",
+        "2_hours": "2 hours",
+        "6_hours": "6 hours",
+        "12_hours": "12 hours"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "weight": {
+        "name": "Weight"
+      },
+      "target_weight": {
+        "name": "Target Weight"
+      },
+      "body_fat": {
+        "name": "Body Fat"
+      },
+      "muscle_mass": {
+        "name": "Muscle Mass"
+      },
+      "bmi": {
+        "name": "BMI"
+      }
+    },
+    "number": {
+      "effect_speed": {
+        "name": "Effect Speed"
+      }
+    },
+    "select": {
+      "effect_direction": {
+        "name": "Effect Direction"
+      }
+    }
+  }
+}
