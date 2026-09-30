@@ -28,9 +28,85 @@ async def async_setup_entry(
     """Set up cloud-discovered EufyLife selects."""
     cloud = entry.runtime_data.light_cloud
     if cloud is not None:
-        async_add_entities(
-            EufyLifeLightDirection(cloud, device) for device in cloud.devices.values()
+        entities: list[SelectEntity] = []
+        for device in cloud.devices.values():
+            entities.append(EufyLifeLightScene(cloud, device))
+            entities.append(EufyLifeLightDirection(cloud, device))
+        async_add_entities(entities)
+
+
+class EufyLifeLightScene(SelectEntity):
+    """Select the scene a light renders.
+
+    A scene is what the Eufy app calls an effect: the account's own scenes (its
+    (Persoonlijk) tab, read from ``/app/light/diy/list``) next to the shared
+    catalog of presets. The light's effect selector offers that same list and
+    the light reports which one it runs, so this entity is that selector as a
+    control of its own — one whose option names an automation can use directly
+    (``select.select_option``) instead of the light's effect attribute.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "scene"
+    _attr_icon = "mdi:palette"
+
+    def __init__(self, cloud: EufyLifeLightCloud, device: EufyLifeLightDevice) -> None:
+        self._cloud = cloud
+        self._device = device
+        self._attr_unique_id = f"{device.serial}_scene"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device.serial)},
         )
+
+    @property
+    def options(self) -> list[str]:
+        """Return every scene this light can render, by name.
+
+        Read from the device, so a scene saved with ``create_scene`` in Home
+        Assistant or in the app becomes an option without a reload, and a
+        deleted one stops being offered.
+        """
+        return list(self._device.effects)
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the scene the light reported running, not the one asked for."""
+        return self._device.effect
+
+    async def async_select_option(self, option: str) -> None:
+        """Apply a scene, and switch the light on so that it shows it.
+
+        The app does the same: applying a scene from it leaves the light on,
+        because a scene on a light that is switched off is invisible. A light
+        whose power is not known yet counts as off here, for the same reason.
+        The light is switched on after the scene is applied, at the brightness
+        it already had, which is also the order the light entity itself uses.
+        """
+        from homeassistant.exceptions import HomeAssistantError
+
+        try:
+            await self._cloud.async_set_effect(
+                self._device.serial,
+                effect=option,
+                refresh=not self._device.silent_effect,
+            )
+            if not self._device.is_on:
+                self._cloud.set_power(self._device.serial, True)
+        except EufyLifeCloudError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    @property
+    def available(self) -> bool:
+        """Return whether the cloud link and device are available."""
+        return self._cloud.connected and self._device.online is not False
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to state changes."""
+        self._cloud.add_listener(self._device.serial, self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe from state changes."""
+        self._cloud.remove_listener(self._device.serial, self.async_write_ha_state)
 
 
 class EufyLifeLightDirection(SelectEntity):

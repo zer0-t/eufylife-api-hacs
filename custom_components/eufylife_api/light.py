@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
@@ -184,15 +185,44 @@ class EufyLifeLight(LightEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return device-specific state attributes."""
-        return {
+        """Return device-specific state attributes.
+
+        The ids and the moment are what the light itself reported: ``light_id``
+        is the mode it renders (the A4 of its report) and ``effect_id`` is the
+        cloud id (A6) that the effect name was resolved from, so an effect this
+        account cannot name is still readable as the id the light showed.
+        """
+        attributes: dict[str, Any] = {
             "speed": self._device.speed,
             "direction": self._device.direction,
             "lamp_count": self._device.lamp_count,
             "model": self._device.model,
             "model_name": self._device.model_name,
             "protocol": "modern" if self._device.animation_protocol else "generic",
+            "light_id": self._device.light_id,
+            "effect_id": self._device.effect_id,
+            "online": self._device.online,
         }
+        if self._device.effect is not None:
+            # The account's own scenes carry the app's own type; catalog presets
+            # are shared by every account and do not.
+            preset = self._device.effects.get(self._device.effect) or {}
+            attributes["effect_source"] = (
+                "app" if "light_type" in preset else "catalog"
+            )
+        if self._device.colors:
+            # One colour per lamp of the last palette the light acknowledged.
+            attributes["palette"] = [
+                f"#{bytes(color[:3]).hex()}"
+                for color in dict.fromkeys(
+                    tuple(color) for color in self._device.colors
+                )
+            ]
+        if self._device.last_report is not None:
+            attributes["last_report"] = datetime.fromtimestamp(
+                self._device.last_report, tz=timezone.utc
+            ).isoformat(timespec="seconds")
+        return attributes
 
     @property
     def effect(self) -> str | None:

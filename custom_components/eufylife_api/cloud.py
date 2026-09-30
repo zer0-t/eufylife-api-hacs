@@ -118,10 +118,18 @@ class EufyLifeLightDevice:
     rgb_color: tuple[int, int, int] | None = None
     rgbww_color: tuple[int, int, int, int, int] | None = None
     effect: str | None = None
+    # The cloud id the light reports for the effect it runs (the A6 of its own
+    # report): a catalog preset's own light_id, or the id of a scene the account
+    # built in the app. The name above is resolved from it; the id itself stays
+    # on the device, so an effect this account cannot name is still visible as
+    # the id the light showed.
+    effect_id: int | None = None
     speed: int | None = None
     direction: int | None = None
     colors: list[tuple[int, ...]] | None = None
     effects: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # When the light last reported its settings, or answered a settings read.
+    last_report: float | None = None
 
     @property
     def animation_protocol(self) -> bool:
@@ -147,6 +155,26 @@ class EufyLifeLightDevice:
     def model_name(self) -> str:
         """Retail name of the model, or the raw code for an unknown family member."""
         return _FAMILY_MODEL_NAMES.get(self.model, self.model)
+
+
+def _adopt_effect_settings(device: EufyLifeLightDevice) -> None:
+    """Fill in the speed and direction the running effect was applied with.
+
+    A report carries the power, the brightness, the segment count and the effect
+    ids, but never the speed or the direction the write sent, so for a light
+    whose effect was not applied from here the values the effect itself carries
+    are the only ones known to have been applied with it: exactly what
+    ``async_set_effect`` sends when it is given no override. A value this
+    integration wrote is never replaced, and a direction outside the two the
+    firmware takes is left alone rather than shown as an unknown option.
+    """
+    if device.effect is None:
+        return
+    preset = device.effects.get(device.effect) or {}
+    if device.speed is None and preset.get("speed") is not None:
+        device.speed = int(preset["speed"])
+    if device.direction is None and preset.get("direction") in (0, 1):
+        device.direction = int(preset["direction"])
 
 
 async def async_login(
@@ -1498,6 +1526,7 @@ class EufyLifeLightCloud:
             if brightness is not None:
                 self.devices[serial].brightness = brightness[0]
             device = self.devices[serial]
+            device.last_report = time.time()
             if (count := values.get(0xA3)) is not None:
                 if len(count) not in (1, 2):
                     raise ValueError("Invalid light count")
@@ -1510,16 +1539,28 @@ class EufyLifeLightCloud:
                 if light_id != device.light_id:
                     device.rgb_color = None
                     device.effect = None
+                    device.effect_id = None
                     device.colors = []
                 device.light_id = light_id
             cloud_id = values.get(0xA6)
             if cloud_id and len(cloud_id) == 4:
+                # The cloud id is the effect's identity, so the name is looked up
+                # on every report, and one the account cannot name leaves no name
+                # at all: two app-built scenes can share the mode in A4, so the
+                # name that ran before would be a lie. The id the light showed is
+                # kept either way.
                 cid = int.from_bytes(cloud_id, "little")
                 if cid:
-                    for eff_name, eff_p in device.effects.items():
-                        if eff_p.get("light_id") == cid:
-                            device.effect = eff_name
-                            break
+                    device.effect_id = cid
+                    device.effect = next(
+                        (
+                            name
+                            for name, preset in device.effects.items()
+                            if preset.get("light_id") == cid
+                        ),
+                        None,
+                    )
+                    _adopt_effect_settings(device)
             self._notify(serial)
             return
         if opcode == _SET_POWER_RESPONSE:
@@ -1738,6 +1779,9 @@ class EufyLifeLightCloud:
             device.rgb_color = tuple(rgb_color) if rgb_color is not None else None
             device.rgbww_color = tuple(rgbww_color) if rgbww_color is not None else None
             device.effect = effect
+            # The id of the effect that was asked for, kept until the light
+            # reports which one it actually runs (A6).
+            device.effect_id = target_cloud_id if effect is not None else None
             device.speed = target_speed
             device.direction = target_direction
             device.colors = target_colors
@@ -2771,6 +2815,80 @@ def _self_check() -> None:
                 preset.get("light_id") for preset in device.effects.values()
             }
 
+    async def check_reported_effect_status() -> None:
+        """A report names the running effect, keeps its ids and its own settings.
+
+        The captured (0x02, 0x04) frame of "kerst", with the account's own scene
+        list read back: the cloud id in A6 is what names the scene, that id stays
+        on the device so a scene the account cannot name is still visible as the
+        id the light showed, and the mode in A4 is kept next to it. A report
+        carries no speed and no direction — the write's own fields are not echoed
+        — so the scene's own values are adopted, and a value this integration
+        wrote is never replaced by them.
+        """
+        cloud = EufyLifeLightCloud(MagicMock(), "user", "", "", "", "NL", "en", "UTC")
+        device = EufyLifeLightDevice(serial="e22", name="E22", model=_T8L02_MODEL)
+        cloud.devices["e22"] = device
+        device.effects = {
+            # The app's own scene as ``_parse_personal_scenes`` lists it.
+            "kerst": {
+                "light_id": 171200,
+                "dynamic": 20002,
+                "direction": 0,
+                "speed": 10,
+                "colors": [(255, 149, 13), (255, 7, 75)],
+                "light_type": 4,
+            },
+        }
+        opcode, payload = _parse_frame(
+            bytes.fromhex(
+                # "kerst": A1=1, A2=1, A3=50, A4=20002, A6=171200, A7=3.
+                "ff0925000301020204a10101a20101a30132a404224e0000a50100"
+                "a604c09c0200a70103"
+                "77"
+            )
+        )
+        assert opcode == _REPORT_DEVICE_INFO
+        cloud._handle_frame("e22", opcode, payload)
+        assert device.effect == "kerst" and device.effect_id == 171200
+        assert device.light_id == 20002  # The mode the light renders.
+        assert device.speed == 10 and device.direction == 0
+        assert device.last_report is not None
+
+        # The same scene while a speed was written from here: the value Home
+        # Assistant sent is the one the light was told to render with.
+        device.speed = 4
+        cloud._handle_frame("e22", opcode, payload)
+        assert device.effect == "kerst" and device.speed == 4
+
+        # An id the account cannot name leaves no name at all: two app-built
+        # scenes can share the mode in A4, so the name that ran before would name
+        # the wrong scene. The id the light showed is kept either way.
+        opcode, payload = _parse_frame(
+            _frame(
+                _REPORT_DEVICE_INFO,
+                _tlv(0xA4, (20002).to_bytes(4, "little"))
+                + _tlv(0xA6, (999999).to_bytes(4, "little")),
+                version=1,
+            )
+        )
+        cloud._handle_frame("e22", opcode, payload)
+        assert device.effect is None and device.effect_id == 999999
+        assert device.light_id == 20002 and device.speed == 4
+
+        # A report of a plain colour — the mode the colour writes use, with no
+        # cloud id — leaves neither an effect nor an id behind.
+        opcode, payload = _parse_frame(
+            _frame(
+                _REPORT_DEVICE_INFO,
+                _tlv(0xA4, (20006).to_bytes(4, "little"))
+                + _tlv(0xA6, (0).to_bytes(4, "little")),
+                version=1,
+            )
+        )
+        cloud._handle_frame("e22", opcode, payload)
+        assert device.effect is None and device.effect_id is None
+
     async def check_personal_scene_list() -> None:
         """The app's own scenes become named effects that write their cloud id.
 
@@ -3302,6 +3420,7 @@ def _self_check() -> None:
     asyncio.run(check_captured_e22_state_frame())
     asyncio.run(check_captured_e22_lit_state_frame())
     asyncio.run(check_captured_personal_scene_report())
+    asyncio.run(check_reported_effect_status())
     asyncio.run(check_personal_scene_list())
     asyncio.run(check_captured_e22_animation_ack_frame())
     asyncio.run(check_scene_and_ai_routes())

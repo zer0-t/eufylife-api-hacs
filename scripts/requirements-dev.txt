@@ -6,3 +6,7 @@
 #
 #     pip install -r scripts/requirements-dev.txt
 flask>=3.0,<4
+# make_brand_assets.py needs Pillow to read the project logo and write the
+# integration's brand images; Home Assistant ships Pillow itself, so the version
+# is only bounded where Pillow's own API has been stable.
+Pillow>=10,<13

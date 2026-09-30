@@ -1,2 +1,4 @@
 * text=auto eol=lf
+# The brand images are PNGs; never let git normalise their line endings.
+*.png binary
 *.py text eol=lf 

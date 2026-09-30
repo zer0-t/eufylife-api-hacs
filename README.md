@@ -17,6 +17,8 @@
 | -------- | ----------- |
 | `sensor` | Show current weight, target weight, body fat, muscle mass, and BMI for each family member |
 | `light` | Discover and control Eufy lights (Outdoor Pathway T8L30, Indoor Floor Lamp T8L40, Permanent Outdoor Lights E22, and any other light in the account's Eufy light cloud) |
+| `select` | **Scene** — the lights' catalog presets and the account's own scenes, applied by name — and **Effect Direction** per light |
+| `number` | **Effect Speed** per light |
 
 ## Features
 
@@ -27,6 +29,7 @@
 - 🔄 **Real-time Updates**: Automatic data synchronization with configurable intervals (1 min to 12 hours)
 - ⚙️ **Configurable**: Adjust update frequency after setup without restarting Home Assistante
 - 💡 **Eufy Lights**: On/off, brightness, native RGBWW picker (including warm/cool white LEDs), classic presets and segmented control for the Eufy lights in your account. Verified against the E10 series (Outdoor Pathway T8L30 and Indoor Floor Lamp T8L40); newer models such as the E22 permanent outdoor lights are discovered automatically and driven through the generic light protocol
+- 🎨 **Scenes as a control**: the shared catalog plus the scenes of the account's own `Persoonlijk` tab as a `scene` select per light, and the running effect with its cloud id, mode, source, speed and direction readable from the light's attributes
 
 ## Installation
 
@@ -43,6 +46,13 @@ as a custom repository first:
 6. Search for "EufyLife API" and download it
 7. Restart Home Assistant
 8. In the HA UI go to "Configuration" -> "Integrations" click "+" and search for "EufyLife API", then enter your EufyLife email, password and country there (see [Configuration](#configuration))
+
+The integration ships its own icon and logo (`custom_components/eufylife_api/brand/`), which
+Home Assistant 2026.3 and later show beside it. HACS still draws the icon of a custom
+repository from the brands CDN, which no longer lists custom integrations, so its card shows
+"logo not available" until HACS serves a repository's own brand images
+([hacs/integration#5388](https://github.com/hacs/integration/pull/5388)) - that has no effect on
+the integration itself.
 
 ### Manual Installation
 
@@ -234,6 +244,14 @@ classic settings request with power, brightness and its 50-segment count and nee
 no session handshake; the light sends that reply on the iOS-style
 `cmd/…/app/res` topic, which the integration subscribes to.
 
+The same list of presets and personal scenes is a select of its own,
+**Scene** (`select.<device>_scene`), with one option per scene from the account's
+catalog and its `Persoonlijk` tab. Choosing one applies it and switches the light
+on, because a scene on a light that is switched off is invisible — the same result
+as tapping a scene in the app. That makes scenes addressable by name from an
+automation (`select.select_option`) instead of through the light's effect
+attribute.
+
 ```yaml
 action: light.turn_on
 target:
@@ -252,6 +270,38 @@ successful device ACK and is marked assumed in HA. The per-segment palette still
 cannot be read back — a light that runs a preset reports no colour data at all —
 so colours selected in the app are not reconstructed after restarting HA or after a
 mode change that does not come from HA.
+
+The light's own report is readable from its attributes, so an automation can see
+what is actually running rather than what was asked for:
+
+| Attribute | Meaning |
+| --- | --- |
+| `effect_id` | The cloud id the light named for the effect it runs — a catalog preset's own id, or the id of one of your scenes |
+| `light_id` | The mode the light reports rendering (`A4` of its report; `20002` for a running scene, `20006` for a plain colour) |
+| `effect_source` | Whether the running effect's name came from your account's own scenes (`app`) or from the shared catalog (`catalog`); absent when the running effect has no name |
+| `speed`, `direction` | The values the effect was applied with: what you wrote through the effect speed number or the effect direction select, and otherwise the values the effect itself carries — a report never echoes them |
+| `palette` | The colours of the last palette the light acknowledged, one per lamp, deduplicated |
+| `last_report` | UTC timestamp of the report the light last sent (or answered) |
+| `online` | The reachability the cloud lists for the light |
+
+```yaml
+trigger:
+  - platform: state
+    entity_id: light.eufy_e22_permanent_outdoor_lights
+    attribute: effect_id
+action:
+  - action: persistent_notification.create
+    data:
+      title: The lights changed scene
+      message: >-
+        They now run effect {{ state_attr(trigger.entity_id, 'effect_id') }}
+        at {{ state_attr(trigger.entity_id, 'speed') }}.
+```
+
+A report whose cloud id is not in the account's own list leaves `effect_id` as the
+id the light showed and no effect name at all, rather than the name of whatever ran
+before it: two personal scenes can share the mode a report carries, so the previous
+name would name the wrong scene.
 
 ### Advanced Controls (Segmented DIY Mode)
 
@@ -286,8 +336,9 @@ addressed segments — per-segment entities are only created for lights with up 
 The `Persoonlijk` tab of the Eufy app is account data rather than a catalog the
 cloud serves every account, and the integration reads the same route the app does
 (`/app/light/diy/list`), so those scenes are already selectable by name in the
-light's effect list. They can also be created, changed and removed from Home
-Assistant, which is what these services are for:
+light's effect list and in its **Scene** select, which applies the chosen scene
+and switches the light on so that the scene is visible. They can also be created,
+changed and removed from Home Assistant, which is what these services are for:
 
 | Service | What it does |
 | --- | --- |

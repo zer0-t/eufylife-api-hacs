@@ -21,5 +21,9 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          # eufylife_api is not registered in home-assistant/brands.
-          ignore: "brands"
+          # No ignores: the repository ships its own brand images in
+          # custom_components/eufylife_api/brand/ (which satisfies the "brands"
+          # check), and the remaining checks - description, issues, topics,
+          # hacsjson, integration_manifest - are all repository settings or files
+          # that are in place. Topics are set in Settings -> General -> Topics on
+          # the repository page, as they cannot live in a file.

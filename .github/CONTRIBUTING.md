@@ -119,17 +119,33 @@ Users install this integration through [HACS](https://hacs.xyz/). HACS copies on
 
 - `hacs.json` - HACS metadata (`content_in_root` must stay `false`)
 - `custom_components/eufylife_api/manifest.json` - `version` must match `version.txt`
+- `custom_components/eufylife_api/brand/` - the integration's own brand images, which Home
+  Assistant 2026.3 and later serve through its brands proxy
+- `scripts/make_brand_assets.py` - regenerates those images from `.github/logo.png`
 - `.github/workflows/validate.yml` - runs the `hacs/action` validation on every push
 - `.github/workflows/release.yml` - creates the `vX.Y.Z` release whenever `version.txt` changes
 
 Checklist for a fork:
 
 1. Push the repository to GitHub (it must be public)
-2. Give the repository **topics**. The `repository` check of the HACS validation step in
-   `.github/workflows/validate.yml` fails on a repository without any ("The repository has no
-   valid topics"), and `hacs` and `integration` are the two HACS uses for an integration
-   (`home-assistant` is a safe third). They are set behind the gear icon of the repository
-   page's *About* panel
+2. Give the repository **topics**: the `topics` check of the HACS validation step fails on a
+   repository without any ("The repository has no valid topics"). Topics are repository
+   metadata rather than a file, so they are set behind the gear icon of the repository page's
+   *About* panel, with the `gh` CLI, or with the API and a token that may write them:
+
+   ```bash
+   gh api -X PUT repos/OWNER/REPO/topics \
+     -f 'names[]=home-assistant' -f 'names[]=hacs' -f 'names[]=integration'
+   ```
+
+   ```powershell
+   $topics = '{"names":["home-assistant","hacs","integration"]}'
+   Invoke-RestMethod -Method Put -Uri 'https://api.github.com/repos/OWNER/REPO/topics' `
+     -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json' } `
+     -Body $topics -ContentType 'application/json'
+   ```
+
+   `hacs` and `integration` are the two an integration needs; `home-assistant` is a safe third
 3. Bump `version.txt` **and** the `version` key in `manifest.json` to the same value and merge
    to the default branch; the Release workflow creates the matching tag. HACS only offers
    versions that have a release - a repository without releases cannot be installed
@@ -144,9 +160,14 @@ Checklist for a fork:
    obtain and refresh the API tokens
 
 Being in the HACS default list (so users do not have to add a custom repository) is optional
-and requires brand images in this repository or a pull request against
-[home-assistant/brands](https://github.com/home-assistant/brands), plus a PR to the
-[hacs/default](https://github.com/hacs/default) list.
+and requires the brand images that are in this repository plus a PR to the
+[hacs/default](https://github.com/hacs/default) list; the `hacs/action` validation that
+`hacs/default` runs must then pass without any `ignore`. Note that HACS draws the icon of a
+custom repository from the brands CDN, where a custom integration is no longer added
+(`home-assistant/brands` closes those pull requests and points at the local `brand/` folder
+instead), so its card shows "logo not available" until HACS serves a repository's own images
+([hacs/integration#5388](https://github.com/hacs/integration/pull/5388)). Home Assistant itself
+has shown the icon from `custom_components/eufylife_api/brand/` since 2026.3.
 
 ## Questions?
 

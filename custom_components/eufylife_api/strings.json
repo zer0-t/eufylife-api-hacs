@@ -93,6 +93,9 @@
     "select": {
       "effect_direction": {
         "name": "Effect Direction"
+      },
+      "scene": {
+        "name": "Scene"
       }
     }
   }
