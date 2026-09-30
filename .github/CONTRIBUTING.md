@@ -125,15 +125,20 @@ Users install this integration through [HACS](https://hacs.xyz/). HACS copies on
 Checklist for a fork:
 
 1. Push the repository to GitHub (it must be public)
-2. Bump `version.txt` **and** the `version` key in `manifest.json` to the same value and merge
+2. Give the repository **topics**. The `repository` check of the HACS validation step in
+   `.github/workflows/validate.yml` fails on a repository without any ("The repository has no
+   valid topics"), and `hacs` and `integration` are the two HACS uses for an integration
+   (`home-assistant` is a safe third). They are set behind the gear icon of the repository
+   page's *About* panel
+3. Bump `version.txt` **and** the `version` key in `manifest.json` to the same value and merge
    to the default branch; the Release workflow creates the matching tag. HACS only offers
    versions that have a release - a repository without releases cannot be installed
-3. Never commit app dumps or local credential files; `.gitignore` already excludes
+4. Never commit app dumps or local credential files; `.gitignore` already excludes
    `*.apk`, `*.apkm`, `eufy_creds.json` and `.env`. GitHub rejects files larger than 100 MB
-4. In Home Assistant open HACS -> Integrations -> three-dot menu -> **Custom repositories**,
+5. In Home Assistant open HACS -> Integrations -> three-dot menu -> **Custom repositories**,
    paste the repository URL, choose category **Integration** and click Add
-5. Search for "EufyLife API", download it and restart Home Assistant
-6. Add the integration in **Settings -> Devices & Services -> Add Integration -> EufyLife API**
+6. Search for "EufyLife API", download it and restart Home Assistant
+7. Add the integration in **Settings -> Devices & Services -> Add Integration -> EufyLife API**
    and enter the EufyLife email, password and country there. The credentials are stored in the
    Home Assistant config entry, never in the repository, and the config flow uses them to
    obtain and refresh the API tokens

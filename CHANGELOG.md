@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused imports dropped (`Any` in `number.py` and `select.py`; the `TYPE_CHECKING`-only `ConfigEntry` in `models.py` now says why it is there), so `ruff check custom_components` reports nothing
 - Repository metadata points at the publishing account (`zer0-t`): the manifest's `codeowners`, `documentation` and `issue_tracker`, the README's HACS custom-repository URL, release and license shields and maintainer badge, and the two issue templates' Code of Conduct link — the templates previously mixed the two older owner names
 - The release workflow builds its notes in a file and publishes with the runner's own `gh` CLI instead of the archived `actions/create-release@v1` (Node 12, unmaintained since 2021), so bumping `version.txt` really does produce the GitHub release HACS needs before it will offer a version: the notes still come from `version.txt` plus the commit subjects between the last stable tag and `HEAD`, and a `2.4.0-beta1`-style version is still marked a pre-release
+- The publishing checklist asks for the repository **topics** as well: the `hacs/action` `repository` check in the Validate workflow fails on a repository that has none ("The repository has no valid topics"), and `hacs` plus `integration` are the two HACS uses for an integration
 
 ## [2.4.0] - 2026-09-29
 
