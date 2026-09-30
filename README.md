@@ -8,7 +8,6 @@
 [![License][license-shield]](LICENSE)
 [![hacs][hacsbadge]][hacs]
 [![Project Maintenance][maintenance-shield]][user_profile]
-[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
 [![Community Forum][forum-shield]][forum]
 
 **This integration will set up the following platforms:**
@@ -444,8 +443,6 @@ This is an unofficial integration. EufyLife and Eufy are trademarks of Anker Inn
 ---
 
 [integration_blueprint]: https://github.com/ludeeus/integration_blueprint
-[buymecoffee]: https://buymeacoffee.com/mshary
-[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
 [exampleimg]: .github/logo.png
