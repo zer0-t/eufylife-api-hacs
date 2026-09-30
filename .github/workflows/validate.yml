@@ -25,5 +25,7 @@ jobs:
           # custom_components/eufylife_api/brand/ (which satisfies the "brands"
           # check), and the remaining checks - description, issues, topics,
           # hacsjson, integration_manifest - are all repository settings or files
-          # that are in place. Topics are set in Settings -> General -> Topics on
-          # the repository page, as they cannot live in a file.
+          # that are in place. The topics are metadata rather than a file, so
+          # they are set with the gear icon of the repository page's About panel
+          # (or PUT /repos/OWNER/REPO/topics); the action picks them up on the
+          # next run without a commit.
