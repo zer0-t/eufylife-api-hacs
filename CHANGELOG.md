@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.5.0] - 2026-10-01
 
 ### Added
 - **The AI tab and the scene editor are on the wire, not in the app**: the light-feature routes of Eufy 3.3.12 are not in the Java dex at all — they live in the Flutter module (`lib/*/libapp.so` inside `split_config.*.apk`), which names 57 `/app/...` routes in plain text, among them the whole AIGC family (`/app/light/aigc/create|get|magic|recommend/list|update`) and the scene editor's own writes (`/app/light/diy/create|update|delete`). Reading them out of the module is what made the feature reachable at all: `E10_Animation_Research.md`'s route table had them only as app behaviour
