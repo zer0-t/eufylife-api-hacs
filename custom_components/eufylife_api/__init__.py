@@ -31,7 +31,13 @@ from .models import EufyLifeData, entry_country
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.LIGHT, Platform.NUMBER, Platform.SELECT]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.LIGHT,
+    Platform.NUMBER,
+    Platform.SELECT,
+]
 
 
 async def async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> bool:

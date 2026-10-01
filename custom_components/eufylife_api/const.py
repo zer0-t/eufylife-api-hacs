@@ -112,3 +112,46 @@ SENSOR_TYPES = {
         "icon": "mdi:food-drumstick",
     },
 }
+
+# Sensors that read the state a light itself reports, one set per light. The same
+# values stay readable as attributes of the light entity; as sensors they get
+# history, long-term statistics and a place in the device page like every other
+# value. ``diagnostic`` marks the ones that describe the protocol rather than the
+# lamp, so they land in the device page's diagnostic section; ``unit``,
+# ``state_class`` and ``device_class`` feed the matching Home Assistant classes.
+# The names live in translations/en.json under ``entity.sensor.<key>``: custom
+# integrations are translated from ``translations/`` and never from
+# ``strings.json``, which is a core build-time file.
+LIGHT_SENSOR_TYPES = {
+    "effect": {
+        "icon": "mdi:palette-swatch",
+        "diagnostic": False,
+    },
+    "effect_id": {
+        "icon": "mdi:identifier",
+        "diagnostic": True,
+    },
+    "mode": {
+        "icon": "mdi:lightbulb-on-outline",
+        "diagnostic": True,
+    },
+    "brightness": {
+        "unit": "%",
+        "state_class": "measurement",
+        "icon": "mdi:brightness-6",
+        "diagnostic": False,
+    },
+    "segments": {
+        "icon": "mdi:dots-horizontal",
+        "diagnostic": True,
+    },
+    "scenes": {
+        "icon": "mdi:playlist-music",
+        "diagnostic": True,
+    },
+    "last_report": {
+        "device_class": "timestamp",
+        "icon": "mdi:clock-outline",
+        "diagnostic": True,
+    },
+}

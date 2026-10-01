@@ -14,21 +14,23 @@
 
 | Platform | Description |
 | -------- | ----------- |
-| `sensor` | Show current weight, target weight, body fat, muscle mass, and BMI for each family member |
+| `sensor` | The state the light itself reports, per light: effect, effect id, mode, brightness, segments, scenes and last report |
 | `light` | Discover and control Eufy lights (Outdoor Pathway T8L30, Indoor Floor Lamp T8L40, Permanent Outdoor Lights E22, and any other light in the account's Eufy light cloud) |
 | `select` | **Scene** — the lights' catalog presets and the account's own scenes, applied by name — and **Effect Direction** per light |
 | `number` | **Effect Speed** per light |
+| `binary_sensor` | **Connectivity** per light and **Cloud link** for the account's light cloud |
 
 ## Features
 
 - 🔐 **Easy Setup**: Email/password authentication through Home Assistant UI
-- ⚖️ **Weight Tracking**: Current weight and target weight sensors
-- 📊 **Body Composition**: Body fat percentage, muscle mass, and BMI
-- 👥 **Multi-User**: Supports multiple family members on the same scale
-- 🔄 **Real-time Updates**: Automatic data synchronization with configurable intervals (1 min to 12 hours)
-- ⚙️ **Configurable**: Adjust update frequency after setup without restarting Home Assistante
-- 💡 **Eufy Lights**: On/off, brightness, native RGBWW picker (including warm/cool white LEDs), classic presets and segmented control for the Eufy lights in your account. Verified against the E10 series (Outdoor Pathway T8L30 and Indoor Floor Lamp T8L40); newer models such as the E22 permanent outdoor lights are discovered automatically and driven through the generic light protocol
+- 🏡 **Permanent Outdoor Lights E22 (`T8L02`)**: verified end to end on real hardware - power, brightness, the settings read, its 50 addressable segments, its whole preset catalog and per-segment colour, driven through the family's animation protocol
+- 🤝 **Several lights, shared accounts**: every light in the account's Eufy light cloud is discovered, including the ones shared with the account, and each one gets its own entities
+- 🔄 **Real-time Updates**: every light's own state arrives the moment the lamp reports it, over the account's MQTT link, so the entities follow the light rather than a poll
+- ⚙️ **Configurable**: adjust the update interval (1 minute to 12 hours) after setup without restarting Home Assistant
+- 💡 **Eufy Lights**: On/off, brightness, native RGBWW picker (including warm/cool white LEDs), classic presets and segmented control for the Eufy lights in your account. Verified end to end against the E10 series (Outdoor Pathway T8L30 and Indoor Floor Lamp T8L40) and the Permanent Outdoor Lights E22 (`T8L02`); any other model is discovered automatically and controlled through the generic light protocol
 - 🎨 **Scenes as a control**: the shared catalog plus the scenes of the account's own `Persoonlijk` tab as a `scene` select per light, and the running effect with its cloud id, mode, source, speed and direction readable from the light's attributes
+- 📈 **The light's own report as sensors**: Effect, Effect ID, Mode, Brightness, Segments, Scenes and Last report per light, so what a lamp reports has history and long-term statistics instead of living in an attribute list, plus a **Connectivity** binary sensor for each light and a **Cloud link** one for the account's MQTT link
+- 🩺 **Diagnostics**: **Download diagnostics** carries the account's shape and every light's own state — model code, verified or not, protocol flags, the effect it runs with its mode and cloud id, the palette it acknowledged and the scenes it can render — with credentials, tokens and account ids redacted
 
 ## Installation
 
@@ -73,8 +75,8 @@ Configuration is done through the Home Assistant UI:
    - **Email**: Your EufyLife account email
    - **Password**: Your EufyLife account password
 4. Choose your preferred update interval (default: 5 minutes)
-5. The integration will automatically discover your devices and family members
-6. Scale sensors and light entities will be created for the devices the account exposes
+5. The integration discovers the lights in your account's Eufy light cloud
+6. A light entity, its seven sensors, its **Scene** select, its **Effect Speed** and **Effect Direction** controls and its **Connectivity** binary sensor are created for every light it finds
 
 Use the same direct email/password login that works in the Eufy Life app. Accounts
 created with Google or Apple sign-in may need a Eufy password set or reset first.
@@ -86,10 +88,13 @@ contain no secrets - and the same dialog is used again if the password changes (
 
 ### Update Intervals
 
-You can configure how often the integration fetches new data:
+You can configure how often the integration re-reads the account's cloud data. The
+lights do not depend on it - every lamp's own report arrives over the account's MQTT
+link the moment it sends one, so what Home Assistant shows follows the light rather
+than a poll:
 
-- **1 minute**: For frequent weighing sessions
-- **2 minutes**: For regular daily use
+- **1 minute**: Fastest refresh
+- **2 minutes**: Frequent
 - **5 minutes**: Recommended default
 - **10, 15, 30 minutes**: For moderate usage
 - **1, 2, 6, 12 hours**: For occasional use
@@ -103,10 +108,9 @@ To change the update interval after setup:
 
 ## Supported Devices
 
-- EufyLife smart scales connected to the EufyLife mobile app
 - Eufy lights in the account's Eufy light cloud, including:
+  - Permanent Outdoor Lights E22 (`T8L02`): verified end to end on real hardware - power, brightness, the settings read, its 50 segments and its full preset catalog, driven through the family's animation protocol
   - Outdoor Pathway Lights (`T8L30`) and Indoor Floor Lamp (`T8L40`) of the E10 series (verified end to end)
-  - Permanent Outdoor Lights E22 (`T8L02`): driven through the family's animation protocol, state read verified on real hardware
 - Shared accounts: lights shared with your account are discovered too
 
 The family shares one wire protocol. Your light reports its code in the `model`
@@ -220,6 +224,16 @@ a reachable light reports `1`; the discovery report prints that value next to a
 silent light. The integration also ignores the broker's echo of its own commands,
 so a `messages=1` line that only mentions `…/req` means the light has not answered.
 
+If you want to hand someone the state itself rather than a description of it, download
+the integration's diagnostics — **Settings → Devices & Services → EufyLife API →
+three-dot menu → Download diagnostics**. The file carries the account's country, how
+long its token still lives, how many lights the link carries, whether the light link is up
+and, per light, the model code with whether it is a verified one, the protocol flags,
+power, brightness and segment count, the mode and cloud id of the running effect with
+the name resolved from it, the palette the light acknowledged and the scenes the
+account can render. Credentials, tokens and account ids are replaced by
+`**REDACTED**`; serials and model codes are kept, because a report is filed under them.
+
 ### Light controls
 
 Open the light's more-info panel for brightness, the native RGBWW picker (supporting
@@ -279,9 +293,15 @@ what is actually running rather than what was asked for:
 | `light_id` | The mode the light reports rendering (`A4` of its report; `20002` for a running scene, `20006` for a plain colour) |
 | `effect_source` | Whether the running effect's name came from your account's own scenes (`app`) or from the shared catalog (`catalog`); absent when the running effect has no name |
 | `speed`, `direction` | The values the effect was applied with: what you wrote through the effect speed number or the effect direction select, and otherwise the values the effect itself carries — a report never echoes them |
-| `palette` | The colours of the last palette the light acknowledged, one per lamp, deduplicated |
+| `palette` | The colours of the last palette the light acknowledged, one per lamp, deduplicated on all five channels — two lamps that differ only in their white channel are two entries |
+| `palette_channels` | The same palette with every channel the light reported (`[R, G, B, W, C]` per lamp), which is where the warm and cold white drive levels are |
 | `last_report` | UTC timestamp of the report the light last sent (or answered) |
-| `online` | The reachability the cloud lists for the light |
+| `online` | What the light itself last said about being reachable (its `synq/…/state_info`, or `absent` when it has not said anything) |
+| `cloud_status` | The reachability the cloud inventory lists for the light (`device_status`, read once at discovery); `null` when the inventory does not carry it |
+| `serial` | The light's serial, the id its device page and a report about it use |
+| `known_model` | Whether the model code is one the integration has verified against real hardware (see the table above) |
+| `scenes` | How many scene names the light's effect selector offers |
+| `brightness_pct` | The 0–100 percentage the light itself reports, next to the 0–255 scale the entity state uses |
 
 ```yaml
 trigger:
@@ -301,6 +321,36 @@ A report whose cloud id is not in the account's own list leaves `effect_id` as t
 id the light showed and no effect name at all, rather than the name of whatever ran
 before it: two personal scenes can share the mode a report carries, so the previous
 name would name the wrong scene.
+
+### Light sensors and connectivity
+
+The light's report is published as sensors of its own as well, so a value gets
+history, long-term statistics and a row on the device page instead of living only in
+the light's attributes:
+
+| Sensor | Meaning |
+| --- | --- |
+| **Effect** | The name of the scene the light says it runs |
+| **Brightness** | The 0–100 percentage the light reports |
+| **Effect ID** | The cloud id behind that name (`effect_id`) — diagnostic |
+| **Mode** | The mode the light reports rendering (`light_id`, the `A4` of its report) — diagnostic |
+| **Segments** | How many addressable lamps the light reported — diagnostic |
+| **Scenes** | How many scene names its effect selector offers — diagnostic |
+| **Last report** | When the light last reported or answered a settings read — diagnostic |
+
+None of them invent a value: a light that has not reported yet, or an effect id the
+account cannot name, leaves its sensor empty rather than reporting zero, so an
+automation can tell "unknown" from a real reading.
+
+Two **Connectivity** binary sensors say what is reachable. One sits on every light's
+own device and prefers what the light itself last said on its status topic
+(`reported_by_device` in its attributes), falling back to the reachability the cloud
+inventory lists (`reported_by_cloud`, read once at discovery); it stays *unknown*
+until one of the two has said something, so a light that has simply not spoken yet is
+not reported as offline. The other, **Cloud link**, sits on an *EufyLife API* service
+device and follows the one MQTT link the account shares: it reports *off* while the
+link is down rather than going unavailable, which is what tells a silent light apart
+from a broken link.
 
 ### Advanced Controls (Segmented DIY Mode)
 
@@ -394,29 +444,29 @@ account (and without a network).
 
 ## Sensors
 
-For each family member, the integration creates the following sensors:
-
-- **Weight** (`sensor.{name}_weight`) - Current weight in kg
-- **Target Weight** (`sensor.{name}_target_weight`) - Weight goal in kg
-- **Body Fat** (`sensor.{name}_body_fat`) - Body fat percentage
-- **Muscle Mass** (`sensor.{name}_muscle_mass`) - Muscle mass in kg
-- **BMI** (`sensor.{name}_bmi`) - Body Mass Index
+Every light gets the reporters of its own report as sensors, listed under
+[Light sensors and connectivity](#light-sensors-and-connectivity): **Effect**,
+**Brightness**, **Effect ID**, **Mode**, **Segments**, **Scenes** and **Last report**,
+each named `sensor.<light>_<key>`. A value the light has not reported stays empty
+rather than becoming zero, so an automation can tell 'unknown' from a real reading.
 
 ### Device Information
 
-Each family member appears as a separate device in Home Assistant with:
-- Device name: "EufyLife Customer [ID]"
-- Manufacturer: EufyLife
-- Model: Smart Scale
-- Last update timestamp and interval information
+Each light is a device of its own in Home Assistant with:
+- Device name: the name the light has in the Eufy Life app
+- Manufacturer: Eufy
+- Model: the light's retail model, and whether its code is a verified one (`known_model`)
+- Serial number: the light's serial, which is also what identifies it in a report
+- Entities: the light itself, its seven sensors, its **Scene** select, its **Effect Speed** and **Effect Direction** controls and its **Connectivity** sensor
+
+The account itself is one service device, "EufyLife API", which carries the
+**Cloud link** binary sensor.
 
 ## API Details
 
 This integration uses the official EufyLife API endpoints:
 
 - **Authentication**: `POST /v1/user/v2/email/login`
-- **Weight Data**: `GET /v1/customer/all_target`
-- **Detailed Data**: `GET /v1/customer/target/{customer_id}`
 - **Eufy light discovery**: encrypted Eufy Life AIoT device-list API
 - **Eufy light state/control**: certificate-authenticated Eufy Life MQTT
 
@@ -427,9 +477,8 @@ This integration uses the official EufyLife API endpoints:
 - Newer-format animated/AI presets are limited to the catalog entries whose layer params the integration can serialize; unsupported entries are hidden from the effect list. Scenes you build yourself in the app (the `Persoonlijk` tab) are not catalog entries: they are read from the account's own scene list (`/app/light/diy/list`) and offered by name as dynamic effects, so `--personal-scenes` is the report to run when one of them does not show up — it prints every scene with the ids and palette behind its name
 - Unverified light models (any code not in the table above) are controlled through the generic light protocol; some model-specific features may need a follow-up protocol verification
 - Lights that only exist in the eufy Security app are not part of the Eufy Life light cloud (a different cloud and transport) and cannot be controlled by this integration
-- data are avaialbe after open the app in your phone
+- A light has to be listed in the account's Eufy light cloud: it appears in Home Assistant once discovery finds it there, and until the lamp itself reports, its power and brightness stay unknown instead of being assumed
 - Token expires after 30 days (automatic re-authentication planned for future versions)
-- Historical data is limited to what's available via the current API endpoints
 
 ## Contributions are welcome!
 

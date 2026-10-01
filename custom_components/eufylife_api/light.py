@@ -146,6 +146,10 @@ class EufyLifeLight(LightEntity):
             manufacturer="Eufy",
             model=device.model,
             name=device.name,
+            # The serial is the unique id of the entity and the device the light
+            # cloud lists, so the device page can show it instead of leaving the
+            # one identifier a bug report needs buried in the entity registry.
+            serial_number=device.serial,
         )
 
     @property
@@ -191,17 +195,28 @@ class EufyLifeLight(LightEntity):
         is the mode it renders (the A4 of its report) and ``effect_id`` is the
         cloud id (A6) that the effect name was resolved from, so an effect this
         account cannot name is still readable as the id the light showed.
+        ``brightness_pct`` is the 0-100 percentage the light reports (the entity
+        state itself is Home Assistant's 0-255 scale), ``scenes`` is how many
+        names its effect selector offers, ``cloud_status`` is the reachability
+        the cloud inventory lists next to the ``online`` the light reported
+        itself, and ``serial``, ``model`` and ``known_model`` are what a report
+        about a light that misbehaves needs.
         """
         attributes: dict[str, Any] = {
+            "serial": self._device.serial,
             "speed": self._device.speed,
             "direction": self._device.direction,
             "lamp_count": self._device.lamp_count,
+            "brightness_pct": self._device.brightness,
             "model": self._device.model,
             "model_name": self._device.model_name,
+            "known_model": self._device.known_model,
             "protocol": "modern" if self._device.animation_protocol else "generic",
             "light_id": self._device.light_id,
             "effect_id": self._device.effect_id,
+            "scenes": len(self._device.effects),
             "online": self._device.online,
+            "cloud_status": self._device.cloud_status,
         }
         if self._device.effect is not None:
             # The account's own scenes carry the app's own type; catalog presets
@@ -211,13 +226,16 @@ class EufyLifeLight(LightEntity):
                 "app" if "light_type" in preset else "catalog"
             )
         if self._device.colors:
-            # One colour per lamp of the last palette the light acknowledged.
-            attributes["palette"] = [
-                f"#{bytes(color[:3]).hex()}"
-                for color in dict.fromkeys(
-                    tuple(color) for color in self._device.colors
-                )
-            ]
+            # One colour per lamp of the last palette the light acknowledged, as
+            # the light reported it. Two lamps that differ only in their warm or
+            # cold white channel are two different colours, so the deduplicated
+            # hex view keeps both and ``palette_channels`` carries the drive
+            # levels that a hex colour cannot show.
+            colors = list(
+                dict.fromkeys(tuple(color) for color in self._device.colors)
+            )
+            attributes["palette"] = [f"#{bytes(color[:3]).hex()}" for color in colors]
+            attributes["palette_channels"] = [list(color) for color in colors]
         if self._device.last_report is not None:
             attributes["last_report"] = datetime.fromtimestamp(
                 self._device.last_report, tz=timezone.utc

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfMass
+from homeassistant.const import EntityCategory, UnitOfMass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -25,17 +25,30 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from .cloud import EufyLifeLightCloud, EufyLifeLightDevice
 from .const import (
     API_BASE_URL,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    LIGHT_SENSOR_TYPES,
     SENSOR_TYPES,
     USER_AGENT_VERSION,
 )
 from .models import EufyLifeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+# The device field a light sensor reads, for the sensors that are one value of
+# the light's own report. ``scenes`` and ``last_report`` are derived from the
+# same report and are handled in the entity itself.
+LIGHT_SENSOR_ATTRIBUTES = {
+    "effect": "effect",
+    "effect_id": "effect_id",
+    "mode": "light_id",
+    "brightness": "brightness",
+    "segments": "lamp_count",
+}
 
 
 class EufyLifeDataUpdateCoordinator(DataUpdateCoordinator):
@@ -593,6 +606,20 @@ async def async_setup_entry(
     """Set up EufyLife API sensor based on a config entry."""
     _LOGGER.info("Setting up EufyLife API sensors for entry %s", entry.entry_id)
 
+    # Lights first: a light's sensors read what the light reports over MQTT, so
+    # they need no coordinator of their own, and an account that has lights but no
+    # scale must not lose them to the scale's early return below.
+    light_cloud = entry.runtime_data.light_cloud
+    if light_cloud is not None:
+        light_sensors: list[SensorEntity] = [
+            EufyLifeLightSensor(light_cloud, device, sensor_type)
+            for device in light_cloud.devices.values()
+            for sensor_type in LIGHT_SENSOR_TYPES
+        ]
+        if light_sensors:
+            _LOGGER.info("Adding %d light sensors", len(light_sensors))
+            async_add_entities(light_sensors)
+
     if not entry.runtime_data.customer_ids:
         _LOGGER.info("No EufyLife scale customers found; skipping scale polling")
         return
@@ -756,3 +783,78 @@ class EufyLifeSensorEntity(CoordinatorEntity, SensorEntity):
             attrs["product_code"] = customer_data["product_code"]
 
         return attrs
+
+
+class EufyLifeLightSensor(SensorEntity):
+    """A value the light itself reports, as a sensor of its own.
+
+    The light entity carries the same values as attributes, but an attribute has
+    no history, no long-term statistics and no place of its own on the device
+    page. These sensors read the state the light reports over MQTT through the
+    cloud's own listeners, so they follow the lamp instead of being polled, and
+    the names come from the integration's translations under
+    ``entity.sensor.<key>``.
+    """
+
+    _attr_has_entity_name = True
+    # The state arrives on the light cloud's listeners; there is nothing to poll.
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        cloud: EufyLifeLightCloud,
+        device: EufyLifeLightDevice,
+        sensor_type: str,
+    ) -> None:
+        """Initialize a sensor that reads one value of a light's report."""
+        self._cloud = cloud
+        self._device = device
+        self._sensor_type = sensor_type
+        self._attr_unique_id = f"{device.serial}_{sensor_type}"
+        self._attr_translation_key = sensor_type
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device.serial)},
+        )
+
+        config = LIGHT_SENSOR_TYPES[sensor_type]
+        self._attr_icon = config.get("icon")
+        if config.get("diagnostic"):
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        if config.get("unit"):
+            self._attr_native_unit_of_measurement = config["unit"]
+        if config.get("state_class") == "measurement":
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        if config.get("device_class") == "timestamp":
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def available(self) -> bool:
+        """Return whether the cloud link and device are available."""
+        return self._cloud.connected and self._device.online is not False
+
+    @property
+    def native_value(self) -> str | int | float | datetime | None:
+        """Return the value the light last reported for this sensor.
+
+        A missing value stays missing: an unreported mode or a light whose scene
+        list has not been read yet reports nothing rather than zero, so an
+        automation can tell "unknown" from a real reading.
+        """
+        attribute = LIGHT_SENSOR_ATTRIBUTES.get(self._sensor_type)
+        if attribute is not None:
+            return getattr(self._device, attribute)
+        if self._sensor_type == "scenes":
+            return len(self._device.effects) or None
+        if self._sensor_type == "last_report":
+            if self._device.last_report is None:
+                return None
+            return datetime.fromtimestamp(self._device.last_report, tz=timezone.utc)
+        return None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to the light's own reports."""
+        self._cloud.add_listener(self._device.serial, self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe from the light's own reports."""
+        self._cloud.remove_listener(self._device.serial, self.async_write_ha_state)

@@ -112,6 +112,11 @@ class EufyLifeLightDevice:
     account_id: str = ""
     is_on: bool | None = None
     online: bool | None = None
+    # The reachability the cloud inventory lists for the light (``device_status``
+    # of ``/app/devicerelation/get_device_list``). It is read at discovery, before
+    # any light has reported, and kept apart from ``online``, which is what the
+    # light itself last said on its own status topic.
+    cloud_status: bool | None = None
     brightness: int | None = None
     lamp_count: int | None = None
     light_id: int | None = None
@@ -150,6 +155,18 @@ class EufyLifeLightDevice:
     def known_model(self) -> bool:
         """Whether this model code has been verified against real hardware."""
         return self.model in _KNOWN_MODELS
+
+    @property
+    def reachable(self) -> bool | None:
+        """Return what is known about the light being reachable.
+
+        The light's own status report is fresher than the inventory entry it was
+        discovered from, so it wins while it is known; ``None`` means neither has
+        said anything yet, which is not the same as "offline".
+        """
+        if self.online is not None:
+            return self.online
+        return self.cloud_status
 
     @property
     def model_name(self) -> str:
@@ -1124,6 +1141,10 @@ class EufyLifeLightCloud:
         self._mqtt: mqtt.Client | None = None
         self._mqtt_files: tempfile.TemporaryDirectory[str] | None = None
         self._listeners: dict[str, set[Callable[[], None]]] = defaultdict(set)
+        # Link-level listeners follow the MQTT link itself (up or down) rather
+        # than one light, so an entity can say whether the link the whole account
+        # shares is up while every light is silent.
+        self._link_listeners: set[Callable[[], None]] = set()
         self.devices: dict[str, EufyLifeLightDevice] = {}
         self.connected = False
         self._effect_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -1186,6 +1207,18 @@ class EufyLifeLightCloud:
                 if not isinstance(account_id, str) or not account_id:
                     raise EufyLifeCloudError("Shared light is missing its owner ID")
             name = str(raw.get("device_name") or "Eufy Light")
+            # A light that is switched off at the mains is still listed with its
+            # last known state, so the inventory's own ``device_status`` is the
+            # only reachability such a light has: it reads 0 where a reachable
+            # light reports 1. The value is kept next to what the light says
+            # itself instead of overwriting it, because this one is read once and
+            # the light's own status topic keeps talking.
+            status = raw.get("device_status")
+            cloud_status: bool | None = None
+            if isinstance(status, bool):
+                cloud_status = status
+            elif isinstance(status, int):
+                cloud_status = bool(status)
             if model not in _KNOWN_MODELS:
                 _LOGGER.info(
                     "Discovered %s (%s, model %s) which is not in the verified "
@@ -1200,6 +1233,7 @@ class EufyLifeLightCloud:
                 name=name,
                 model=model,
                 account_id=account_id,
+                cloud_status=cloud_status,
             )
 
         if not self.devices:
@@ -2180,12 +2214,24 @@ class EufyLifeLightCloud:
     def remove_listener(self, serial: str, listener: Callable[[], None]) -> None:
         self._listeners[serial].discard(listener)
 
+    def add_link_listener(self, listener: Callable[[], None]) -> None:
+        """Subscribe to the MQTT link coming up or going down."""
+        self._link_listeners.add(listener)
+
+    def remove_link_listener(self, listener: Callable[[], None]) -> None:
+        """Unsubscribe from the MQTT link coming up or going down."""
+        self._link_listeners.discard(listener)
+
     def _notify(self, serial: str | None = None) -> None:
-        listeners = (
-            self._listeners.get(serial, ())
-            if serial is not None
-            else (listener for group in self._listeners.values() for listener in group)
-        )
+        if serial is None:
+            listeners = [
+                listener
+                for group in self._listeners.values()
+                for listener in group
+            ]
+            listeners.extend(self._link_listeners)
+        else:
+            listeners = self._listeners.get(serial, ())
         for listener in tuple(listeners):
             self._loop.call_soon_threadsafe(listener)
 
@@ -2461,6 +2507,9 @@ def _self_check() -> None:
             assert device.model == "T8L99"
             assert device.name == "Mystery Light"
             assert device.account_id == "user"
+            # An inventory entry without a device_status says nothing at all,
+            # which is not the same as an unreachable light.
+            assert device.cloud_status is None and device.reachable is None
             assert not device.known_model
             assert not device.animation_protocol
             assert not device.session_handshake and not device.silent_effect
@@ -3413,6 +3462,107 @@ def _self_check() -> None:
                 "Tiki Torch Twilight",
             ]
 
+    async def check_inventory_status_and_link_listeners() -> None:
+        """The inventory's own reachability, and who hears the shared link.
+
+        A light that is switched off at the mains is still listed with its last
+        known state, so the inventory's ``device_status`` is the only reachability
+        a report-less light has. It stays readable next to the light's own status
+        topic, and an entity that follows the link rather than one light hears the
+        link going up and down without being redrawn by a single light's updates.
+        """
+        async with aiohttp.ClientSession() as session:
+            cloud = EufyLifeLightCloud(session, "user", "", "", "", "NL", "en", "UTC")
+            response = MagicMock()
+            response.json = AsyncMock(
+                return_value={
+                    "code": 0,
+                    "data": {"domain": "aiot-light-api-eu.eufylife.com"},
+                }
+            )
+            inventory = {
+                "devices": [
+                    {
+                        "device": {
+                            "device_sn": "t8l02",
+                            "device_model": _T8L02_MODEL,
+                            "device_name": "permanent",
+                            "device_status": 0,
+                        }
+                    }
+                ]
+            }
+            with (
+                patch.object(session, "post") as post,
+                patch.object(cloud._crypto, "async_exchange", new=AsyncMock()),
+                patch.object(
+                    cloud,
+                    "_async_post",
+                    # Inventory, catalog, app-built scenes, then the MQTT info.
+                    new=AsyncMock(
+                        side_effect=[inventory, {"list": []}, {"list": []}, {}]
+                    ),
+                ),
+                patch.object(cloud, "_start_mqtt"),
+            ):
+                post.return_value.__aenter__.return_value = response
+                await cloud.async_start()
+
+            device = cloud.devices["t8l02"]
+            assert device.cloud_status is False
+            assert device.reachable is False  # Nothing has reported from it yet.
+            assert device.online is None
+
+            class _Message:
+                def __init__(self, topic: str, body: dict[str, Any]) -> None:
+                    self.topic = topic
+                    self.payload = json.dumps(body).encode()
+
+            link_events: list[str] = []
+            device_events: list[str] = []
+
+            def on_link() -> None:
+                link_events.append("link")
+
+            def on_device() -> None:
+                device_events.append("device")
+
+            cloud.add_link_listener(on_link)
+            cloud.add_listener("t8l02", on_device)
+
+            # The link coming up wakes both; one light's own update wakes only
+            # that light's entities, so a link entity is not redrawn per report.
+            cloud.connected = True
+            cloud._notify()
+            await asyncio.sleep(0)
+            assert link_events == ["link"]
+            assert device_events == ["device"]
+
+            cloud._notify("t8l02")
+            await asyncio.sleep(0)
+            assert link_events == ["link"]
+            assert device_events == ["device", "device"]
+
+            # The light's own status topic is fresher than the inventory entry,
+            # so it wins while the inventory keeps saying 0.
+            cloud._on_message(
+                None,
+                None,
+                _Message(
+                    "synq/eufy_life/T8L02/t8l02/state_info",
+                    {"payload": json.dumps({"status": True})},
+                ),
+            )
+            await asyncio.sleep(0)
+            assert device.online is True
+            assert device.reachable is True
+            assert device.cloud_status is False
+            assert device_events == ["device", "device", "device"]
+
+            cloud.remove_link_listener(on_link)
+            cloud.remove_listener("t8l02", on_device)
+            assert not cloud._link_listeners
+
     asyncio.run(check_empty_inventory())
     asyncio.run(check_generic_model_discovery())
     asyncio.run(check_e22_model_support())
@@ -3424,6 +3574,7 @@ def _self_check() -> None:
     asyncio.run(check_personal_scene_list())
     asyncio.run(check_captured_e22_animation_ack_frame())
     asyncio.run(check_scene_and_ai_routes())
+    asyncio.run(check_inventory_status_and_link_listeners())
     asyncio.run(check_paho_compatibility())
 
 
